@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+  <title>活動入場資訊查詢</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .hidden { display: none !important; }
+    body { background-color: #f0f2f5; font-family: "Microsoft JhengHei", sans-serif; padding: 20px; }
+    .query-card { max-width: 400px; margin: 40px auto 0; }
+    .info-card { max-width: 400px; margin: 24px auto; border-radius: 20px; overflow: hidden; background: #fff; box-shadow: 0 15px 35px rgba(0,0,0,0.1); }
+    .info-card .header { background: #0d6efd; color: #fff; padding: 22px 20px; text-align: center; }
+    .info-card .header .label { font-size: 12px; opacity: .8; letter-spacing: 1px; }
+    .info-card .header .event-name { font-size: 20px; font-weight: 700; margin-top: 4px; line-height: 1.3; }
+    .info-card .content { padding: 28px 30px 34px; text-align: center; }
+    .batch-circle { width: 120px; height: 120px; border: 5px solid #0d6efd; border-radius: 50%; margin: 0 auto 22px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; color: #0d6efd; }
+    .field-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 4px; border-bottom: 1px solid #f0f0f0; }
+    .field-row:last-child { border-bottom: none; }
+    .field-label { color: #6c757d; font-size: 14px; }
+    .field-value { font-size: 18px; font-weight: 600; color: #212529; }
+    .time-value { color: #0d6efd; }
+    .btn-back { width: 100%; margin-top: 24px; border-radius: 50px; padding: 12px; font-weight: 600; }
+    .footer-text { font-size: 10px; color: #adb5bd; text-align: center; margin-top: 40px; user-select: none; }
+    #loading { text-align:center; color:#6c757d; margin-top:20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- 查詢輸入 -->
+    <div id="query-view">
+      <div class="text-center">
+        <h3>活動入場資訊查詢</h3>
+        <p class="text-muted small">請輸入報名時填寫的姓名與電話號碼</p>
+      </div>
+      <div class="card p-4 shadow-sm border-0 query-card" style="border-radius: 15px;">
+        <input type="text" id="nameInput" class="form-control form-control-lg text-center mb-2"
+               placeholder="請輸入姓名" onkeydown="if(event.key==='Enter')handleLookup()">
+        <input type="tel" id="idInput" class="form-control form-control-lg text-center"
+               placeholder="電話號碼，例如：0912345678" onkeydown="if(event.key==='Enter')handleLookup()">
+        <button class="btn btn-primary btn-lg mt-3 w-100" id="lookupBtn" onclick="handleLookup()">查詢我的入場資訊</button>
+        <div id="loading" class="hidden">查詢中，人多時請稍候幾秒…</div>
+      </div>
+    </div>
+
+    <!-- 查詢結果 -->
+    <div id="info-view" class="info-card hidden">
+      <div class="header">
+        <div class="label">本日講座</div>
+        <div class="event-name" id="eventName">---</div>
+      </div>
+      <div class="content">
+        <div class="batch-circle" id="batchCircle">---</div>
+        <div class="field-row">
+          <span class="field-label">姓名</span>
+          <span class="field-value" id="userName">---</span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">進場批次</span>
+          <span class="field-value" id="userBatch">---</span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">進場時間</span>
+          <span class="field-value time-value" id="userTime">---</span>
+        </div>
+        <button class="btn btn-outline-secondary btn-back" onclick="resetView()">重新查詢</button>
+      </div>
+    </div>
+
+    <div class="footer-text">Design By 雲海科技</div>
+  </div>
+
+  <script>
+    // =============================================
+    // 🔧 部署 GAS 後，把網址貼到這裡（結尾要是 /exec）
+    // =============================================
+    const GAS_URL = "請貼上你的_GAS_部署網址_結尾_exec";
+
+    // 自動重試：尖峰時若撞到「忙碌」，會自動退避後重試，把硬失敗變成稍慢但成功
+    async function callGAS(action, data = {}, maxRetries = 3) {
+      let lastErr;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const res = await fetch(GAS_URL, {
+            method: "POST",
+            body: JSON.stringify({ action, data }),
+            headers: { "Content-Type": "text/plain" }
+          });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const json = await res.json();   // 忙碌時可能回傳非 JSON 錯誤頁，會在這裡丟出
+          if (json.status === "SUCCESS") return json.result;
+          throw new Error("backend");
+        } catch (e) {
+          lastErr = e;
+          if (attempt < maxRetries) {
+            // 隨機退避 0.8～2 秒（隨次數遞增），錯開同時湧入的尖峰
+            const delay = 800 + Math.random() * 1200 + attempt * 400;
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+      }
+      throw lastErr;
+    }
+
+    async function handleLookup() {
+      const name  = document.getElementById('nameInput').value.trim();
+      const input = document.getElementById('idInput').value.trim();
+      if (!name)  { alert("請輸入姓名"); return; }
+      if (!input) { alert("請輸入電話號碼"); return; }
+
+      const btn = document.getElementById('lookupBtn');
+      const loading = document.getElementById('loading');
+      btn.disabled = true;
+      loading.classList.remove('hidden');
+
+      try {
+        const res = await callGAS("queryInfo", { idNumber: input, name: name });
+        if (res.status === "success") {
+          document.getElementById('eventName').innerText  = res.eventName || "—";
+          document.getElementById('userName').innerText   = res.name || "—";
+          document.getElementById('userBatch').innerText  = res.batch || "—";
+          document.getElementById('userTime').innerText   = res.time || "—";
+          document.getElementById('batchCircle').innerText = res.batch || "—";
+          document.getElementById('query-view').classList.add('hidden');
+          document.getElementById('info-view').classList.remove('hidden');
+        } else {
+          alert(res.message || "查無資料");
+        }
+      } catch (e) {
+        alert("查詢人數較多，暫時忙碌，請稍候再按一次查詢");
+      } finally {
+        btn.disabled = false;
+        loading.classList.add('hidden');
+      }
+    }
+
+    function resetView() {
+      document.getElementById('info-view').classList.add('hidden');
+      document.getElementById('query-view').classList.remove('hidden');
+      document.getElementById('nameInput').value = "";
+      document.getElementById('idInput').value = "";
+      document.getElementById('nameInput').focus();
+    }
+  </script>
+</body>
+</html>
