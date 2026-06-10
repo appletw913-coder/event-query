@@ -75,7 +75,7 @@
     // =============================================
     // 🔧 部署 GAS 後，把網址貼到這裡（結尾要是 /exec）
     // =============================================
-    const GAS_URL = "請貼上你的_GAS_部署網址_結尾_exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxUQgFpi0lorw0pfyrDuWYU4HFmBeBreI6BYqxTVXPIFfSlzSU5c6wlQdI5uJL6C8ae/exec";
 
     // 自動重試：尖峰時若撞到「忙碌」，會自動退避後重試，把硬失敗變成稍慢但成功
     async function callGAS(action, data = {}, maxRetries = 3) {
